@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>iPhone Header Design</title>
+    <style>
+      body { 
+        margin: 0; 
+        padding: 0;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+        background: #f7f7f7;
+      }
+      
+      #header-container {
+        position: relative;
+        width: 100%;
+        height: 800px;
+        overflow: hidden;
+      }
+      
+      canvas { 
+        display: block; 
+        width: 100% !important;
+        height: 100% !important;
+      }
+    </style>
+    <link rel="icon" href="data:,">
+  </head>
+  <body>
+    <div id="header-container">
+      <!-- 3D iPhone model will be rendered here -->
+    </div>
+    
+    <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+          "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+      }
+    </script>
+    
+    <script type="module">
+      import * as THREE from 'three';
+      import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+      import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+      import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+
+      const container = document.getElementById('header-container');
+      
+      // Scene setup
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0xf7f7f7);
+      
+      // Add video element variable for access
+      let videoElement;
+      
+      // Add click handler to play video on user interaction
+      document.addEventListener('click', function() {
+        if (videoElement && videoElement.paused) {
+          videoElement.play().catch(e => console.log('Error playing video:', e));
+        }
+      });
+      
+      // Camera setup
+      const camera = new THREE.PerspectiveCamera(20, container.clientWidth / container.clientHeight, 0.1, 1000);
+      camera.position.set(0, 0, 35);
+      
+      // Renderer setup with tone mapping for better HDR
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(container.clientWidth, container.clientHeight);
+      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.2; // Slightly increased for better P3 color handling
+      renderer.outputEncoding = THREE.sRGBEncoding;
+      renderer.outputColorSpace = THREE.SRGBColorSpace; // Explicitly set color space
+      container.appendChild(renderer.domElement);
+      
+      // Add mouse tracking variables for parallax effect
+      let mouseX = 0;
+      let mouseY = 0;
+      let targetRotationX = 0;
+      let targetRotationY = 0;
+      let currentRotationX = 0;
+      let currentRotationY = 0;
+      
+      // Variables for entrance animation
+      let isEntranceAnimationPlaying = true;
+      let entranceAnimationStartTime = 0;
+      const entranceAnimationDuration = 1800; // 1.8 seconds (slightly faster)
+      
+      // Track mouse position
+      document.addEventListener('mousemove', function(event) {
+        // Calculate mouse position relative to center of the screen
+        // Convert to range -1 to 1
+        mouseX = (event.clientX / window.innerWidth - 0.5) * 2;
+        mouseY = (event.clientY / window.innerHeight - 0.5) * 2;
+        
+        // Set target rotation (adjusted for more obvious effect)
+        targetRotationY = mouseX * 0.25; // Horizontal mouse affects Y rotation
+        targetRotationX = mouseY * 0.25; // Vertical mouse affects X rotation
+      });
+      
+      // For mobile/touch devices
+      document.addEventListener('touchmove', function(event) {
+        if (event.touches.length === 1) {
+          // Don't prevent default scrolling to allow page scrolling
+          mouseX = (event.touches[0].clientX / window.innerWidth - 0.5) * 2;
+          mouseY = (event.touches[0].clientY / window.innerHeight - 0.5) * 2;
+          
+          targetRotationY = mouseX * 0.15;
+          targetRotationX = -mouseY * 0.1;
+        }
+      });
+      
+      // Reset rotation when mouse leaves window
+      document.addEventListener('mouseleave', function() {
+        // Gradually return to center position
+        targetRotationX = 0;
+        targetRotationY = 0;
+      });
+      
+      // Reset rotation when touch ends
+      document.addEventListener('touchend', function() {
+        targetRotationX = 0;
+        targetRotationY = 0;
+      });
+      
+      // Controls setup
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
+      controls.target.set(0, 0, 0);
+      
+      // Disable controls to use our custom mouse rotation
+      controls.enabled = false;
+      
+      // Limit the vertical orbit angle to prevent seeing the top/bottom
+      // controls.minPolarAngle = Math.PI * 0.4;
+      // controls.maxPolarAngle = Math.PI * 0.6;
+      
+      // Limit how far users can zoom in and out
+      controls.enableZoom = true;
+      controls.minDistance = 20;
+      controls.maxDistance = 50;
+      
+      // Lighting setup
+      scene.add(new THREE.AmbientLight(0xffffff, 1.0)); // Reduced ambient light for more directional highlights
+      
+      // Add multiple directional lights for better coverage and parallax highlights
+      const directionalLight1 = new THREE.DirectionalLight(0xffffff, 2.0);
+      directionalLight1.position.set(1, 1, 1);
+      scene.add(directionalLight1);
+      
+      const directionalLight2 = new THREE.DirectionalLight(0xffffff, 1.5);
+      directionalLight2.position.set(-1, 1, -1);
+      scene.add(directionalLight2);
+      
+      // Add a spotlight to highlight the front
+      const spotLight = new THREE.SpotLight(0xffffff, 2.5);
+      spotLight.position.set(0, 3, 5);
+      spotLight.angle = Math.PI / 6;
+      spotLight.penumbra = 0.2;
+      scene.add(spotLight);
+      
+      // Loading manager for better error handling
+      const manager = new THREE.LoadingManager();
+      manager.onProgress = function(url, itemsLoaded, itemsTotal) {
+        // console.log('Loading file: ' + url + ' (' + itemsLoaded + '/' + itemsTotal + ')');
+      };
+      manager.onError = function(url) {
+        console.error('Error loading: ' + url);
+      };
+      
+      // Load environment map for reflections
+      const pmremGenerator = new THREE.PMREMGenerator(renderer);
+      pmremGenerator.compileEquirectangularShader();
+      
+      // Using a basic environment map from Three.js examples
+      new RGBELoader()
+        .setPath('https://threejs.org/examples/textures/equirectangular/')
+        .load('royal_esplanade_1k.hdr', function(texture) {
+          const envMap = pmremGenerator.fromEquirectangular(texture).texture;
+          scene.environment = envMap;
+          
+          texture.dispose();
+          pmremGenerator.dispose();
+          
+          // Now load the iPhone model after environment is set
+          loadiPhone();
+        });
+      
+      // iPhone loading function  
+      function loadiPhone() {
+        const loader = new GLTFLoader(manager);
+        // console.log('Starting to load iphone.glb...');
+        loader.load(
+          'iphone.glb', 
+          function(gltf) {
+            // console.log('iPhone model loaded successfully:', gltf);
+            const iphone = gltf.scene;
+            
+            // Scale and position the model appropriately
+            iphone.scale.set(60, 60, 60); // Base scale
+            iphone.position.set(0, 0, 0); // Centered
+            
+            // Set initial scale to 0 for entrance animation
+            iphone.scale.set(0, 0, 0);
+            
+            // Rotate the iPhone so the screen faces the camera initially
+            iphone.rotation.y = 0; // Start at 0 for the spin animation
+            
+            // Name the model for easy reference
+            iphone.name = 'iphone_model';
+            
+            // Start entrance animation
+            entranceAnimationStartTime = Date.now();
+            isEntranceAnimationPlaying = true;
+            
+            // First log all mesh names and materials in the iPhone model:
+            // console.log("Logging all mesh names and materials in the iPhone model:");
+            iphone.traverse(function(child) {
+              if (child.isMesh) {
+                // console.log(`Mesh: ${child.name}`);
+                
+                // Specifically target mesh "10" which has the display wallpaper
+                if (child.name === "10") {
+                  // Create video element
+                  const video = document.createElement('video');
+                  video.src = 'trashy.MP4';
+                  video.loop = true;
+                  video.muted = true;
+                  video.playsInline = true;
+                  video.crossOrigin = 'anonymous';
+                  
+                  // Store reference to video element for play control
+                  videoElement = video;
+                  
+                  // Create an intermediary canvas to flip/process the video
+                  const canvas = document.createElement('canvas');
+                  canvas.width = 1024;  // Set to power of 2 for best texture performance
+                  canvas.height = 1024;
+                  const ctx = canvas.getContext('2d', {
+                    colorSpace: 'display-p3', // Explicitly request P3 color space if supported
+                    alpha: true,
+                    desynchronized: true
+                  });
+                  
+                  // Try to play the video immediately
+                  const playPromise = video.play();
+                  if (playPromise !== undefined) {
+                    playPromise.catch(error => {
+                      console.log('Auto-play was prevented. Click to play the video.');
+                    });
+                  }
+                  
+                  // Create a canvas texture instead of video texture
+                  const canvasTexture = new THREE.CanvasTexture(canvas);
+                  canvasTexture.minFilter = THREE.LinearFilter;
+                  canvasTexture.magFilter = THREE.LinearFilter;
+                  canvasTexture.colorSpace = THREE.SRGBColorSpace;
+                  
+                  // Create material with canvas texture with enhanced color settings for P3 display
+                  const screenMaterial = new THREE.MeshBasicMaterial({
+                    map: canvasTexture,
+                    side: THREE.FrontSide,
+                    toneMapped: false, // Preserve video color
+                  });
+                  
+                  // Apply the material to the screen mesh
+                  child.material = screenMaterial;
+                  
+                  // Setup an animation function to update the canvas with video frames
+                  function updateVideoCanvas() {
+                    if (video.readyState >= video.HAVE_CURRENT_DATA) {
+                      // Clear canvas
+                      ctx.clearRect(0, 0, canvas.width, canvas.height);
+                      
+                      // Calculate aspect ratio to maintain proper scaling
+                      const vidWidth = video.videoWidth;
+                      const vidHeight = video.videoHeight;
+                      
+                      const aspectRatio = vidWidth / vidHeight;
+                      const drawHeight = canvas.height-20;
+                        const drawWidth = canvas.height * aspectRatio-20;
+                      
+                      // Try using a different approach to flip the video
+                      // Method 2: Draw normally, then flip the entire image
+                      
+                      // First draw the video normally
+                      const centerX = (canvas.width - drawWidth) / 2+10;
+                      const centerY = (canvas.height - drawHeight) / 2;
+                      ctx.drawImage(video, centerX, centerY, drawWidth, drawHeight);
+                      
+                      // Now flip the image vertically using a second canvas
+                      const tempCanvas = document.createElement('canvas');
+                      tempCanvas.width = canvas.width;
+                      tempCanvas.height = canvas.height;
+                      const tempCtx = tempCanvas.getContext('2d');
+                      
+                      // Copy to temp canvas, flipped vertically
+                      tempCtx.translate(0, canvas.height);
+                      tempCtx.scale(1, -1);
+                      tempCtx.drawImage(canvas, 0, 0);
+                      
+                      // Clear original canvas and copy back the flipped image
+                      ctx.clearRect(0, 0, canvas.width, canvas.height);
+                      ctx.drawImage(tempCanvas, 0, 0);
+                      
+                      // Mark the texture as needing an update
+                      canvasTexture.needsUpdate = true;
+                    }
+                    
+                    // Continue the animation loop
+                    requestAnimationFrame(updateVideoCanvas);
+                  }
+                  
+                  // Start the video canvas update loop
+                  updateVideoCanvas();
+                }
+                
+                for (let i = 0; i < child.material.length; i++) {
+                    // if (isScreenMaterial(child.material[i])) {
+                    //   console.log(`Found screen material at index ${i} on ${child.name}: ${child.material[i].name}`);
+                      
+                      // Apply black material
+                      child.material[i] = new THREE.MeshStandardMaterial({
+                        color: 0x000000,
+                        metalness: 0.1,
+                        roughness: 0.05,
+                        envMapIntensity: 0.8
+                      });
+                    // }
+                  }
+              }
+            });
+            
+        const barbiePink = new THREE.Color().setHex( 0xF4519A );
+            
+            // Change iPhone body material to Barbie pink
+            iphone.traverse(function(child) {
+              if (child.isMesh) {
+                console.log('Processing mesh:', child.name);
+                
+                // Focus on the main body parts and avoid changing glass, camera, lenses
+                // Also explicitly exclude mesh "10" (the screen)
+                if (
+                    child.name === "12" || // camera light outer ring
+                    child.name === "12_1" || // camera light inner
+                    child.name === "08" || // outer sides/top/bottom of phone
+                    child.name === "08_1" || // outer sides antennas
+                    child.name === "08_2" || // outer sides antennas
+                    child.name === "08_3" || // outer sides antennas
+                    // child.name === "08_4" || // outer sides antennas
+                    child.name === "08_5" || // outer sides antennas
+                    child.name === "08_6" || // outer sides antennas
+                    child.name === "08_7" || // outer sides antennas
+                    child.name === "01" || // back of phone
+                    // child.name === "04" || // cameras outer rings
+                    child.name === "iphone_camera_module_glass" // cameras module container
+                    //child.name === "01_1" // apple logo
+                    // child.name === "09" 
+                ) {
+                  
+                  // Create a new MeshStandardMaterial with metallic properties
+                  const pinkMaterial = new THREE.MeshStandardMaterial({
+                    color: barbiePink,
+                    metalness: 0.7,
+                    roughness: 0.2,
+                    envMapIntensity: 1.5 // Increased for stronger reflections
+                  });
+                  
+                  // Apply the new material
+                  if (Array.isArray(child.material)) {
+                    // Create an array of the same pink material for multi-material objects
+                    child.material = Array(child.material.length).fill(pinkMaterial);
+                  } else {
+                    // Replace the original material
+                    child.material = pinkMaterial;
+                  }
+                //   console.log('Changed material for:', child.name);
+                }
+              }
+            });
+            
+            scene.add(iphone);
+            // console.log('iPhone added to scene:', iphone);
+            // console.log('Scene children:', scene.children);
+          },
+          function(xhr) {
+            // console.log('Model ' + (xhr.loaded / xhr.total * 100) + '% loaded');
+          },
+          function(error) {
+            console.error('Error loading model:', error);
+          }
+        );
+      }
+
+      // Handle window resizing
+      window.addEventListener('resize', () => {
+        camera.aspect = container.clientWidth / container.clientHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(container.clientWidth, container.clientHeight);
+      });
+
+      // Animation loop
+      function animate() {
+        requestAnimationFrame(animate);
+        
+        // Apply rotation to the iPhone model
+        const iphone = scene.getObjectByName('iphone_model');
+        if (iphone) {
+          if (isEntranceAnimationPlaying) {
+            // Calculate progress of entrance animation (0 to 1)
+            const elapsed = Date.now() - entranceAnimationStartTime;
+            const progress = Math.min(elapsed / entranceAnimationDuration, 1.0);
+            
+            if (progress < 1.0) {
+              // During animation: spin the iPhone and scale it up
+              
+              // Cubic ease out for rotation - dramatic start and smooth ending
+              const easeOutCubic = 1 - Math.pow(1 - progress, 3);
+              const spinY = Math.PI * 3 * easeOutCubic;
+              
+              // Add a slight tilt during the spin
+              const tiltX = Math.sin(progress * Math.PI * 2) * 0.3;
+              
+              // Scale up from 0 to full size with a bouncy effect
+              const scaleProgress = progress < 0.7 ? 
+                // Fast scale up to slightly larger than final
+                Math.min(1.2, progress / 0.7 * 1.2) : 
+                // Then bounce back to normal size
+                1.0 + 0.2 * Math.cos((progress - 0.7) / 0.6 * Math.PI);
+              
+              // Apply entrance animation transforms
+              iphone.rotation.y = spinY;
+              iphone.rotation.x = tiltX;
+              iphone.scale.set(
+                scaleProgress * 60,
+                scaleProgress * 60,
+                scaleProgress * 60
+              );
+            } else {
+              // Animation complete - ensure final state is correct
+              iphone.scale.set(60, 60, 60);
+              isEntranceAnimationPlaying = false;
+            }
+          } else {
+            // Normal parallax effect after entrance animation
+            // Smoothly interpolate the rotation with easing
+            currentRotationX += (targetRotationX - currentRotationX) * 0.08;
+            currentRotationY += (targetRotationY - currentRotationY) * 0.08;
+            
+            iphone.rotation.x = Math.PI * currentRotationX;
+            iphone.rotation.y = Math.PI + Math.PI * currentRotationY;
+          }
+        }
+        
+        renderer.render(scene, camera);
+      }
+      animate();
+    </script>
+  </body>
+</html>
